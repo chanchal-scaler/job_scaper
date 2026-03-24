@@ -132,6 +132,9 @@
               <div style="margin-top: 16px;">
                 <button id="submitBtn" type="submit">Fetch Jobs</button>
               </div>
+              <div style="margin-top: 10px;">
+                <button id="downloadCsvBtn" type="button" disabled>Download CSV</button>
+              </div>
             </div>
           </div>
         </form>
@@ -147,8 +150,10 @@
     <script>
       const form = document.getElementById("searchForm");
       const submitBtn = document.getElementById("submitBtn");
+      const downloadCsvBtn = document.getElementById("downloadCsvBtn");
       const statusEl = document.getElementById("status");
       const resultsEl = document.getElementById("results");
+      let latestJobs = [];
 
       function selectedSites() {
         const select = document.getElementById("site_name");
@@ -157,6 +162,8 @@
 
       function renderJobs(payload) {
         const jobs = payload.jobs || [];
+        latestJobs = jobs;
+        downloadCsvBtn.disabled = jobs.length === 0;
         if (jobs.length === 0) {
           resultsEl.innerHTML = '<p class="muted">No jobs found.</p>';
           return;
@@ -185,9 +192,85 @@
         resultsEl.innerHTML = html;
       }
 
+      function csvEscape(value) {
+        const stringValue = value == null ? "" : String(value);
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+
+      function formatSalary(job) {
+        const min = job.min_amount;
+        const max = job.max_amount;
+        const currency = job.currency || "";
+        const interval = job.interval || "";
+
+        if (min == null && max == null) {
+          return "";
+        }
+
+        if (min != null && max != null) {
+          return `${currency} ${min} - ${max} ${interval}`.trim();
+        }
+        if (min != null) {
+          return `${currency} ${min} ${interval}`.trim();
+        }
+        return `${currency} ${max} ${interval}`.trim();
+      }
+
+      function toCsv(jobs) {
+        const headers = [
+          "Company_Name",
+          "Title",
+          "Location",
+          "JD",
+          "Experience",
+          "Salary",
+          "job_url",
+          "platform",
+          "posted date"
+        ];
+
+        const rows = jobs.map((job) => ([
+          job.company_name || job.company || "",
+          job.title || "",
+          job.location || "",
+          job.description || "",
+          job.experience_range || job.job_level || "",
+          formatSalary(job),
+          job.job_url || job.job_url_direct || "",
+          job.site || "",
+          job.date_posted || ""
+        ]));
+
+        const csvLines = [
+          headers.map(csvEscape).join(","),
+          ...rows.map((row) => row.map(csvEscape).join(","))
+        ];
+
+        return csvLines.join("\n");
+      }
+
+      downloadCsvBtn.addEventListener("click", () => {
+        if (latestJobs.length === 0) {
+          return;
+        }
+
+        const csvContent = toCsv(latestJobs);
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        const dateStamp = new Date().toISOString().slice(0, 10);
+        link.href = url;
+        link.download = `jobs_${dateStamp}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      });
+
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
         submitBtn.disabled = true;
+        downloadCsvBtn.disabled = true;
         statusEl.textContent = "Fetching jobs...";
         resultsEl.innerHTML = "";
 
@@ -210,6 +293,7 @@
           statusEl.textContent = `Found ${payload.count} jobs.`;
           renderJobs(payload);
         } catch (error) {
+          latestJobs = [];
           statusEl.innerHTML = `<span class="error">${error.message}</span>`;
         } finally {
           submitBtn.disabled = false;
