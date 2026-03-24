@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JobSpy Job Search</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #0f172a;
+        --card: #111827;
+        --muted: #9ca3af;
+        --text: #f3f4f6;
+        --accent: #22c55e;
+        --border: #374151;
+      }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .container {
+        max-width: 980px;
+        margin: 24px auto;
+        padding: 0 16px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      h1, h2 {
+        margin-top: 0;
+      }
+      .grid {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+      label {
+        display: block;
+        font-size: 0.9rem;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      input, select, button {
+        width: 100%;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: #0b1220;
+        color: var(--text);
+        box-sizing: border-box;
+      }
+      select[multiple] {
+        min-height: 130px;
+      }
+      button {
+        background: var(--accent);
+        color: #052e16;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.7;
+        cursor: wait;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .job {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 10px;
+      }
+      .job a {
+        color: #86efac;
+        text-decoration: none;
+      }
+      .job a:hover {
+        text-decoration: underline;
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      .error {
+        color: #fca5a5;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <h1>JobSpy Job Search</h1>
+        <p class="muted">Simple UI for your FastAPI `/jobs` endpoint.</p>
+        <form id="searchForm">
+          <div class="grid">
+            <div>
+              <label for="site_name">Sites (multi-select)</label>
+              <select id="site_name" multiple>
+                <option value="linkedin" selected>linkedin</option>
+                <option value="indeed">indeed</option>
+                <option value="zip_recruiter">zip_recruiter</option>
+                <option value="glassdoor">glassdoor</option>
+                <option value="google">google</option>
+                <option value="bayt">bayt</option>
+                <option value="naukri">naukri</option>
+                <option value="bdjobs">bdjobs</option>
+              </select>
+            </div>
+            <div>
+              <label for="search_term">Search term</label>
+              <input id="search_term" value="software engineer" />
+              <label for="location" style="margin-top: 10px;">Location</label>
+              <input id="location" value="United States" />
+              <label for="results_wanted" style="margin-top: 10px;">Results wanted</label>
+              <input id="results_wanted" type="number" min="1" max="100" value="20" />
+            </div>
+            <div>
+              <label for="hours_old">Hours old</label>
+              <input id="hours_old" type="number" min="1" max="720" value="72" />
+              <label for="linkedin_fetch_description" style="margin-top: 10px;">LinkedIn fetch description</label>
+              <select id="linkedin_fetch_description">
+                <option value="false" selected>false</option>
+                <option value="true">true</option>
+              </select>
+              <div style="margin-top: 16px;">
+                <button id="submitBtn" type="submit">Fetch Jobs</button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Results</h2>
+        <p id="status" class="muted">No request yet.</p>
+        <div id="results"></div>
+      </div>
+    </div>
+
+    <script>
+      const form = document.getElementById("searchForm");
+      const submitBtn = document.getElementById("submitBtn");
+      const statusEl = document.getElementById("status");
+      const resultsEl = document.getElementById("results");
+
+      function selectedSites() {
+        const select = document.getElementById("site_name");
+        return Array.from(select.selectedOptions).map((o) => o.value);
+      }
+
+      function renderJobs(payload) {
+        const jobs = payload.jobs || [];
+        if (jobs.length === 0) {
+          resultsEl.innerHTML = '<p class="muted">No jobs found.</p>';
+          return;
+        }
+
+        const html = jobs.map((job) => {
+          const title = job.title || "Untitled";
+          const company = job.company || job.company_name || "Unknown company";
+          const location = job.location || "Unknown location";
+          const site = job.site || "-";
+          const posted = job.date_posted || "-";
+          const url = job.job_url || job.job_url_direct || "#";
+
+          return `
+            <div class="job">
+              <h3 style="margin: 0 0 8px 0;">${title}</h3>
+              <div class="meta">${company} · ${location}</div>
+              <div class="meta">Source: ${site} · Posted: ${posted}</div>
+              <div style="margin-top: 8px;">
+                <a href="${url}" target="_blank" rel="noreferrer">Open Job</a>
+              </div>
+            </div>
+          `;
+        }).join("");
+
+        resultsEl.innerHTML = html;
+      }
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        submitBtn.disabled = true;
+        statusEl.textContent = "Fetching jobs...";
+        resultsEl.innerHTML = "";
+
+        const params = new URLSearchParams();
+        selectedSites().forEach((site) => params.append("site_name", site));
+        params.set("search_term", document.getElementById("search_term").value.trim());
+        params.set("location", document.getElementById("location").value.trim());
+        params.set("results_wanted", document.getElementById("results_wanted").value);
+        params.set("hours_old", document.getElementById("hours_old").value);
+        params.set("linkedin_fetch_description", document.getElementById("linkedin_fetch_description").value);
+
+        try {
+          const response = await fetch(`/jobs?${params.toString()}`);
+          const payload = await response.json();
+
+          if (!response.ok) {
+            throw new Error(payload.detail || "Request failed");
+          }
+
+          statusEl.textContent = `Found ${payload.count} jobs.`;
+          renderJobs(payload);
+        } catch (error) {
+          statusEl.innerHTML = `<span class="error">${error.message}</span>`;
+        } finally {
+          submitBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
